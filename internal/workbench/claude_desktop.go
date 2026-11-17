@@ -105,42 +105,12 @@ func (s *Server) claudeDesktopAction(w http.ResponseWriter, r *http.Request) {
 		}
 		switch action {
 		case "install", "update":
-			s.mu.Lock()
-			allowed := s.toolsNetworkAllowedLocked()
-			s.mu.Unlock()
-			if !allowed {
-				return errors.New("工作台正在退出，请稍后重试安装")
-			}
-			monitorContext, stopMonitor := context.WithCancel(s.operationContext())
-			done := make(chan struct{})
-			go func() {
-				defer close(done)
-				ticker := time.NewTicker(10 * time.Second)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-monitorContext.Done():
-						return
-					case <-ticker.C:
-						s.monitorSafety()
-					}
-				}
-			}()
-			defer func() {
-				stopMonitor()
-				s.mu.Lock()
-				if s.monitorCancel != nil {
-					s.monitorCancel()
-				}
-				s.mu.Unlock()
-				<-done
-			}()
 			s.setMessage("正在下载并安装 Claude Desktop，可在操作详情查看进度…")
 			script := cage.ClaudeDesktopInstallScript()
 			if action == "update" {
 				script = "set -e\nsudo systemctl stop cage-claude-desktop.service\n" + script
 			}
-			return RunMaintenanceScript(s.operationContext(), s.configPath, script, s.jobs.execution(), s.jobs.execution())
+			return s.runGuestInstall(script)
 		case "start":
 			return s.startClaudeDesktop()
 		default:
@@ -148,6 +118,42 @@ func (s *Server) claudeDesktopAction(w http.ResponseWriter, r *http.Request) {
 			return s.runDesktopScript("sudo systemctl stop cage-claude-desktop.service", 30*time.Second)
 		}
 	})
+}
+
+// runGuestInstall runs an apt installation in the guest. The network lease is
+// renewed meanwhile, because a download outlasts it.
+func (s *Server) runGuestInstall(script string) error {
+	s.mu.Lock()
+	allowed := s.toolsNetworkAllowedLocked()
+	s.mu.Unlock()
+	if !allowed {
+		return errors.New("工作台正在退出，请稍后重试安装")
+	}
+	monitorContext, stopMonitor := context.WithCancel(s.operationContext())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-monitorContext.Done():
+				return
+			case <-ticker.C:
+				s.monitorSafety()
+			}
+		}
+	}()
+	defer func() {
+		stopMonitor()
+		s.mu.Lock()
+		if s.monitorCancel != nil {
+			s.monitorCancel()
+		}
+		s.mu.Unlock()
+		<-done
+	}()
+	return RunMaintenanceScript(s.operationContext(), s.configPath, script, s.jobs.execution(), s.jobs.execution())
 }
 
 func (s *Server) startClaudeDesktop() error {
@@ -317,7 +323,12 @@ if test -n "$manager" && test "$(cat /run/cage-desktop/display-scale 2>/dev/null
   kill -HUP "$manager"
   printf '%%s\n' "$scale" > /run/cage-desktop/display-scale
 fi
-name=cage-%dx%d
+`, scale, wid, hei) + vncModeScript(wid, hei)
+}
+
+// vncModeScript gives the VNC output of the display in $DISPLAY this size.
+func vncModeScript(wid, hei int) string {
+	return fmt.Sprintf(`name=cage-%dx%d
 if ! xrandr --query | grep -q " $name "; then
   xrandr --newmode "$name" %.3f %d %d %d %d %d %d %d %d +HSync -VSync
   xrandr --addmode VNC-0 "$name"
@@ -325,7 +336,7 @@ fi
 xrandr --output VNC-0 --mode "$name"
 for old in $(xrandr --query | awk '/^ +cage-/ {print $1}'); do
   if [ "$old" != "$name" ]; then xrandr --delmode VNC-0 "$old"; xrandr --rmmode "$old"; fi
-done`, scale, wid, hei, wid, hei, float64((wid+32)*(hei+8)*60)/1000000, wid, wid+8, wid+16, wid+32, hei, hei+1, hei+2, hei+8)
+done`, wid, hei, float64((wid+32)*(hei+8)*60)/1000000, wid, wid+8, wid+16, wid+32, hei, hei+1, hei+2, hei+8)
 }
 
 func (s *Server) claudeDesktopVNC(w http.ResponseWriter, r *http.Request) {
