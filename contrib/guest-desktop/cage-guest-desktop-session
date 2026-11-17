@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Cage guest desktop: one X server on :99 that both the UU remote session and
+# Cage's "guest desktop" panel can watch. It listens on a unix socket only, so
+# no TCP port is opened inside the guest.
+set -euo pipefail
+
+export DISPLAY=:99
+export HOME=/home/riley35
+export USER=riley35
+
+runtime="${RUNTIME_DIRECTORY:-/run/cage-guest-desktop}"
+password="$HOME/.config/claude-cage/guest-desktop-password"
+
+if [ ! -s "$password" ]; then
+  install -d -m 0700 -o riley35 -g riley35 "$(dirname "$password")"
+  od -An -N4 -tx1 /dev/urandom | tr -d ' \n' > "$password"
+  chown riley35:riley35 "$password"
+  chmod 600 "$password"
+fi
+
+umask 077
+tigervncpasswd -f < "$password" > "$runtime/vnc-password"
+chmod 600 "$runtime/vnc-password"
+
+# A stale lock from the previous Xvfb keeps Xtigervnc from claiming :99.
+rm -f "/tmp/.X99-lock" "/tmp/.X11-unix/X99" 2>/dev/null || true
+
+exec /usr/bin/Xtigervnc :99 \
+  -geometry 1280x800 -depth 24 \
+  -rfbport -1 \
+  -rfbunixpath "$runtime/vnc.sock" \
+  -rfbunixmode 0600 \
+  -nolisten tcp \
+  -SecurityTypes VncAuth \
+  -PasswordFile "$runtime/vnc-password" \
+  -AlwaysShared \
+  -desktop "Cage guest desktop"

@@ -1,0 +1,17 @@
+[Unit]
+Description=Cage guest desktop (Xfce on :99, VNC on a unix socket)
+After=systemd-user-sessions.service
+
+[Service]
+Type=simple
+User=riley35
+Group=riley35
+Environment=HOME=/home/riley35
+RuntimeDirectory=cage-guest-desktop
+RuntimeDirectoryMode=0700
+ExecStart=/usr/local/bin/cage-guest-desktop-session
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
