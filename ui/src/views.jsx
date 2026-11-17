@@ -30,7 +30,7 @@ import "@xterm/xterm/css/xterm.css";
 const terminalAccountRequest = (path, options) => api("/cli" + path, options.body);
 
 export const RemoteView = forwardRef(function RemoteView(
-  { visible, focused = true, keyboard, guestPlatform = "linux", systemClipboard = true, tabId, copyScope = tabId, onStatus, onFallback, desktop = false, zoom = 1 },
+  { visible, focused = true, keyboard, guestPlatform = "linux", systemClipboard = true, tabId, copyScope = tabId, onStatus, onFallback, desktop = false, desktopBase = "/claude-desktop", zoom = 1 },
   ref,
 ) {
   const windowVisible = useWindowVisibility();
@@ -82,7 +82,9 @@ export const RemoteView = forwardRef(function RemoteView(
         Math.min(1000 * 2 ** failures.current++, 5000),
       );
     };
-    const desktopPrefix = desktop ? "/claude-desktop" : "";
+    // A desktop view streams one RFB endpoint; the guest desktop is a second
+    // one behind the same transport, so the endpoint is a parameter.
+    const desktopPrefix = desktop ? desktopBase : "";
     api(`${desktopPrefix}/vnc-credentials`)
       .then(({ password, display_scale, dynamic_scale, pixel_wheel }) => {
         if (disposed) return;
@@ -120,7 +122,7 @@ export const RemoteView = forwardRef(function RemoteView(
           setConnection("connected");
           sizeSync = displaySizeSync(
             async (size) => {
-              const reply = await api(desktop ? "/claude-desktop/resize" : "/browser/resize", size);
+              const reply = await api(desktop ? `${desktopBase}/resize` : "/browser/resize", size);
               // The guest kept its own density: size the display for that one.
               if (size.scale !== undefined && reply?.scale !== size.scale && followScreen) {
                 followScreen = false;

@@ -483,6 +483,9 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /api/claude-desktop/vnc", s.claudeDesktopVNC)
 	mux.HandleFunc("POST /api/claude-desktop/resize", s.claudeDesktopResize)
 	mux.HandleFunc("POST /api/claude-desktop/{action}", s.claudeDesktopAction)
+	mux.HandleFunc("GET /api/guest-desktop/vnc-credentials", s.guestDesktopCredentials)
+	mux.HandleFunc("GET /api/guest-desktop/vnc", s.guestDesktopVNC)
+	mux.HandleFunc("POST /api/guest-desktop/resize", s.guestDesktopResize)
 	if s.macosGuest != nil {
 		mux.HandleFunc("POST /api/macos/first-setup", s.macOSLoginWindow)
 		mux.HandleFunc("POST /api/macos/login", s.macOSLoginWindow)

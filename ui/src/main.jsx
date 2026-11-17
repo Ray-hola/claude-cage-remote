@@ -34,6 +34,7 @@ import { MacOSLogin } from "./macos-login";
 import { MacOSAppWindow } from "./macos-claude-window";
 import { ProjectRecovery } from "./project-recovery";
 import { ClaudeDesktop } from "./claude-desktop";
+import { GuestDesktop } from "./guest-desktop";
 import { ClaudeAccountsPanel, useClaudeAccounts } from "./claude-accounts";
 import { AccountProvider, AccountGate, useAccount } from "./account";
 import { BrowserHeader, BrowserTabRail, TerminalHeader, ExpandSidebar, ExpandPane } from "./pane-headers";
@@ -75,6 +76,9 @@ function App() {
   const [managementPage, setManagementPage] = useState("");
   const [tailnetLogin, setTailnetLogin] = useState(null);
   const [desktopOpen, setDesktopOpen] = useState(false);
+  // Which desktop the open pane shows. The pane flag above stays shared so every
+  // layout, shortcut and visibility rule keeps treating both as one pane.
+  const [guestDesktop, setGuestDesktop] = useState(false);
   const [terminalChoice, setTerminalChoice] = useState(null);
   const [openingSession, setOpeningSession] = useState("");
   const [sessionOpenError, setSessionOpenError] = useState(null);
@@ -1500,8 +1504,10 @@ function App() {
               if (window.matchMedia("(max-width: 520px)").matches) setSidebarCollapsed(true);
             }}
             desktopOpen={!managementPage && desktopOpen}
+            guestDesktopOpen={!managementPage && desktopOpen && guestDesktop}
             onClaudeWeb={() => openBrowserPage("https://claude.ai/")}
-            onClaudeDesktop={() => { setManagementPage(""); setHome(false); setDesktopOpen(true); }}
+            onClaudeDesktop={() => { setManagementPage(""); setHome(false); setGuestDesktop(false); setDesktopOpen(true); }}
+            onGuestDesktop={() => { setManagementPage(""); setHome(false); setGuestDesktop(true); setDesktopOpen(true); }}
             onEditor={openEditor}
             onSettings={openSettings}
             onAccountConfirm={confirm}
@@ -1567,7 +1573,12 @@ function App() {
             {!storageRecovery && desktopOpen && macGuest && <MacOSAppWindow key="claude-desktop" uploads={desktopFiles.uploads} keyboard={status.keyboard} remoteRef={remote}
               onStatus={notify} onFallback={(text, message) => setTransfer({ text, message })} visible={!settingsOpen && !managementPage} onConfirm={confirm}
               sidebarCollapsed={sidebarCollapsed} onExpand={() => persist("cage-sidebar-collapsed", false, setSidebarCollapsed)} />}
-            {!storageRecovery && desktopOpen && !macGuest && <ClaudeDesktop
+            {!storageRecovery && desktopOpen && !macGuest && (guestDesktop ? <GuestDesktop
+              status={status} visible={!settingsOpen && !managementPage} remoteRef={remote}
+              onStatus={notify} onFallback={(text, message) => setTransfer({ text, message })}
+              sidebarCollapsed={sidebarCollapsed}
+              onExpand={() => persist("cage-sidebar-collapsed", false, setSidebarCollapsed)}
+            /> : <ClaudeDesktop
               uploads={desktopFiles.uploads}
               onProjectOpened={() => refreshStatus.current?.()}
               status={status} visible={!settingsOpen && !managementPage} remoteRef={remote}
@@ -1575,7 +1586,7 @@ function App() {
               onConfirm={confirm} onDetails={() => setDetails(true)}
               sidebarCollapsed={sidebarCollapsed}
               onExpand={() => persist("cage-sidebar-collapsed", false, setSidebarCollapsed)}
-            />}
+            />)}
             {status.environment_update_required && !busy && (
               <div className="environment-update-banner" role="status">
                 <span>{status.environment_update_error || "环境组件需要更新。请先保存编辑器中的文件。"}</span>
